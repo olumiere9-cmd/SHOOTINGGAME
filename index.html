@@ -2,175 +2,420 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Cup Shooting Game</title>
+<title>Arcade Shooter</title>
 
 <style>
+
 body{
-    margin:0;
-    font-family:Arial;
-    background:#1a1a1a;
-    color:white;
-    text-align:center;
+margin:0;
+font-family:Arial, Helvetica, sans-serif;
+background:#0f172a;
+color:white;
+text-align:center;
+overflow:hidden;
 }
 
 h1{
-    margin-top:10px;
-}
-
-#gameArea{
-    width:100%;
-    height:500px;
-    background:#2e2e2e;
-    position:relative;
-    overflow:hidden;
-    border-top:3px solid white;
-    cursor:crosshair;
-}
-
-.cup{
-    width:60px;
-    height:80px;
-    background:red;
-    border-radius:10px 10px 5px 5px;
-    position:absolute;
-    bottom:0;
+margin:8px;
 }
 
 #hud{
-    margin:10px;
-    font-size:20px;
+font-size:18px;
+margin-bottom:6px;
+}
+
+#gameArea{
+width:100%;
+height:520px;
+position:relative;
+overflow:hidden;
+cursor:none;
+background:linear-gradient(#87CEEB 0%,#87CEEB 65%,#3f8a2f 65%,#2d5c20 100%);
+border-top:3px solid white;
+}
+
+.enemy{
+position:absolute;
+bottom:0;
+width:70px;
+height:140px;
+background:black;
+border-radius:20px;
+}
+
+.enemy::before{
+content:"";
+position:absolute;
+top:-30px;
+left:20px;
+width:30px;
+height:30px;
+background:black;
+border-radius:50%;
+}
+
+.crosshair{
+position:absolute;
+width:42px;
+height:42px;
+border:2px solid red;
+border-radius:50%;
+pointer-events:none;
+transform:translate(-50%,-50%);
+}
+
+.crosshair:before,
+.crosshair:after{
+content:"";
+position:absolute;
+background:red;
+}
+
+.crosshair:before{
+left:50%;
+top:-8px;
+width:2px;
+height:58px;
+transform:translateX(-50%);
+}
+
+.crosshair:after{
+top:50%;
+left:-8px;
+width:58px;
+height:2px;
+transform:translateY(-50%);
+}
+
+.gun{
+position:absolute;
+bottom:10px;
+left:50%;
+width:120px;
+height:40px;
+background:#333;
+border-radius:10px;
+transform:translateX(-50%);
+}
+
+.bullet{
+position:absolute;
+width:6px;
+height:12px;
+background:yellow;
+}
+
+.popup{
+position:absolute;
+color:yellow;
+font-weight:bold;
+animation:pop .8s forwards;
+}
+
+@keyframes pop{
+0%{opacity:1}
+100%{opacity:0; transform:translateY(-40px)}
+}
+
+.particle{
+position:absolute;
+width:6px;
+height:6px;
+background:red;
+border-radius:50%;
+animation:explode .6s forwards;
+}
+
+@keyframes explode{
+0%{opacity:1}
+100%{opacity:0; transform:translateY(-40px) translateX(20px)}
+}
+
+.enemyBullet{
+position:absolute;
+width:8px;
+height:8px;
+background:white;
+border-radius:50%;
+}
+
+#menu{
+margin:10px;
 }
 
 button{
-    padding:10px 20px;
-    font-size:18px;
-    border:none;
-    background:#00b894;
-    color:white;
-    border-radius:5px;
-    cursor:pointer;
+padding:10px 20px;
+font-size:16px;
+border:none;
+border-radius:6px;
+background:#22c55e;
+color:white;
+cursor:pointer;
+margin:5px;
 }
 
 button:hover{
-    background:#019875;
+background:#16a34a;
+}
+
+#gameOver{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+font-size:40px;
+display:none;
+text-shadow:0 0 10px black;
 }
 
 </style>
 </head>
+
 <body>
 
-<h1>🎯 Cup Shooting Game</h1>
+<h1>🎯 Arcade Shooter</h1>
 
 <div id="hud">
 Score: <span id="score">0</span> |
-Ammo: <span id="ammo">20</span> |
-Time: <span id="time">30</span>
+Ammo: <span id="ammo">25</span> |
+Health: <span id="health">5</span> |
+Time: <span id="time">40</span> |
+High Score: <span id="high">0</span>
 </div>
 
-<button onclick="startGame()">Start Game</button>
+<div id="menu">
+<button onclick="startGame('easy')">Easy</button>
+<button onclick="startGame('medium')">Medium</button>
+<button onclick="startGame('hard')">Hard</button>
+</div>
 
-<div id="gameArea"></div>
+<div id="gameArea">
+<div class="crosshair" id="crosshair"></div>
+<div class="gun" id="gun"></div>
+<div id="gameOver"></div>
+</div>
 
 <script>
 
-let score = 0
-let ammo = 20
-let time = 30
-let gameRunning = false
-let cups = []
+let score=0
+let ammo=25
+let health=5
+let time=40
+let running=false
+let difficulty=1
+let enemy=null
 
-const gameArea = document.getElementById("gameArea")
+const gameArea=document.getElementById("gameArea")
+const crosshair=document.getElementById("crosshair")
+const gun=document.getElementById("gun")
 
-function startGame(){
+const shootSound=new Audio("https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3")
+const hitSound=new Audio("https://assets.mixkit.co/active_storage/sfx/270/270-preview.mp3")
+const enemyShootSound=new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3")
 
-    score = 0
-    ammo = 20
-    time = 30
-    cups = []
-    gameArea.innerHTML=""
+let highScore=localStorage.getItem("shooterHigh") || 0
+document.getElementById("high").innerText=highScore
 
-    updateHUD()
+document.addEventListener("mousemove",e=>{
+crosshair.style.left=e.pageX+"px"
+crosshair.style.top=e.pageY+"px"
+gun.style.left=e.pageX+"px"
+})
 
-    gameRunning = true
+function startGame(level){
 
-    spawnCup()
+if(level==="easy") difficulty=1
+if(level==="medium") difficulty=1.5
+if(level==="hard") difficulty=2
 
-    let timer = setInterval(()=>{
-        time--
-        updateHUD()
+score=0
+ammo=25
+health=5
+time=40
 
-        if(time<=0){
-            clearInterval(timer)
-            gameRunning=false
-            alert("Game Over! Score: "+score)
-        }
+running=true
 
-    },1000)
+document.getElementById("menu").style.display="none"
+document.getElementById("gameOver").style.display="none"
+
+updateHUD()
+
+spawnEnemy()
+
+let timer=setInterval(()=>{
+
+time--
+updateHUD()
+
+if(time<=0 || health<=0){
+clearInterval(timer)
+endGame()
+}
+
+},1000)
+
+}
+
+function spawnEnemy(){
+
+if(!running) return
+
+if(enemy) enemy.remove()
+
+enemy=document.createElement("div")
+enemy.className="enemy"
+
+enemy.style.left=Math.random()*(window.innerWidth-100)+"px"
+
+gameArea.appendChild(enemy)
+
+let dir=1
+let speed=2*difficulty
+
+let move=setInterval(()=>{
+
+let x=enemy.offsetLeft
+
+if(x<=0 || x+enemy.offsetWidth>=window.innerWidth) dir*=-1
+
+enemy.style.left=(x+speed*dir)+"px"
+
+if(!running) clearInterval(move)
+
+},20)
+
+enemy.onclick=(e)=>{
+
+score++
+hitSound.currentTime=0
+hitSound.play()
+
+createParticles(e.pageX,e.pageY)
+createPopup(e.pageX,e.pageY)
+
+enemy.remove()
+enemy=null
+
+updateHUD()
+
+setTimeout(spawnEnemy,800)
+
+}
+
+enemyShoot()
+
+}
+
+function enemyShoot(){
+
+let shootInterval=setInterval(()=>{
+
+if(!running || !enemy) return
+
+enemyShootSound.currentTime=0
+enemyShootSound.play()
+
+let bullet=document.createElement("div")
+bullet.className="enemyBullet"
+
+bullet.style.left=enemy.offsetLeft+30+"px"
+bullet.style.top="120px"
+
+gameArea.appendChild(bullet)
+
+let fall=setInterval(()=>{
+
+bullet.style.top=(bullet.offsetTop+6)+"px"
+
+if(bullet.offsetTop>480){
+
+health--
+updateHUD()
+bullet.remove()
+clearInterval(fall)
+
+}
+
+},30)
+
+},2000/difficulty)
+
+}
+
+gameArea.addEventListener("click",e=>{
+
+if(!running) return
+if(ammo<=0) return
+
+ammo--
+updateHUD()
+
+shootSound.currentTime=0
+shootSound.play()
+
+})
+
+function createPopup(x,y){
+
+let pop=document.createElement("div")
+pop.className="popup"
+pop.innerText="+1"
+
+pop.style.left=x+"px"
+pop.style.top=y+"px"
+
+gameArea.appendChild(pop)
+
+setTimeout(()=>pop.remove(),800)
+
+}
+
+function createParticles(x,y){
+
+for(let i=0;i<8;i++){
+
+let p=document.createElement("div")
+p.className="particle"
+
+p.style.left=x+"px"
+p.style.top=y+"px"
+
+gameArea.appendChild(p)
+
+setTimeout(()=>p.remove(),600)
+
+}
 
 }
 
 function updateHUD(){
-    document.getElementById("score").innerText=score
-    document.getElementById("ammo").innerText=ammo
-    document.getElementById("time").innerText=time
-}
 
-function spawnCup(){
-
-    if(!gameRunning) return
-
-    let cup = document.createElement("div")
-    cup.classList.add("cup")
-
-    cup.style.left = Math.random()*90 + "%"
-
-    let speed = Math.random()*2 + 1
-    let direction = 1
-
-    cup.onclick = function(e){
-
-        if(!gameRunning) return
-
-        score++
-        updateHUD()
-
-        cup.remove()
-    }
-
-    gameArea.appendChild(cup)
-
-    let move = setInterval(()=>{
-
-        let left = cup.offsetLeft
-
-        if(left + cup.offsetWidth > gameArea.offsetWidth || left < 0){
-            direction *= -1
-        }
-
-        cup.style.left = (left + speed*direction) + "px"
-
-        if(!gameRunning){
-            clearInterval(move)
-        }
-
-    },20)
-
-    cups.push(cup)
-
-    setTimeout(spawnCup,1200)
+document.getElementById("score").innerText=score
+document.getElementById("ammo").innerText=ammo
+document.getElementById("health").innerText=health
+document.getElementById("time").innerText=time
 
 }
 
-gameArea.addEventListener("click",function(e){
+function endGame(){
 
-    if(!gameRunning) return
+running=false
 
-    if(ammo<=0) return
+if(score>highScore){
+highScore=score
+localStorage.setItem("shooterHigh",score)
+}
 
-    ammo--
-    updateHUD()
+document.getElementById("gameOver").innerHTML=
+"GAME OVER<br>Score: "+score+"<br><button onclick='restart()'>Play Again</button>"
 
-})
+document.getElementById("gameOver").style.display="block"
+
+}
+
+function restart(){
+location.reload()
+}
 
 </script>
 
